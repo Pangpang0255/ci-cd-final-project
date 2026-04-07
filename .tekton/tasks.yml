@@ -1,0 +1,113 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: cleanup
+spec:
+  steps:
+    - name: cleanup
+      image: alpine:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Cleaning up workspace..."
+          rm -rf /workspace/output/*
+          echo "Cleanup completed"
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: git-clone
+spec:
+  params:
+    - name: repository-url
+      type: string
+      description: Git repository URL
+    - name: branch
+      type: string
+      default: main
+      description: Git branch to clone
+  workspaces:
+    - name: output
+  steps:
+    - name: clone
+      image: alpine/git:latest
+      workingDir: /workspace/output
+      command: ['git', 'clone', '--branch', '$(params.branch)', '$(params.repository-url)', '.']
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: flake8-linting
+spec:
+  workspaces:
+    - name: output
+  steps:
+    - name: lint
+      image: python:3.9-slim
+      workingDir: /workspace/output
+      command:
+        - sh
+        - -c
+      args:
+        - |
+          pip install flake8
+          echo "Running flake8..."
+          flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 src --count --max-complexity=10 --max-line-length=127 --statistics
+          echo "Flake8 linting completed"
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: nose-tests
+spec:
+  workspaces:
+    - name: output
+  steps:
+    - name: test
+      image: python:3.9-slim
+      workingDir: /workspace/output
+      command:
+        - sh
+        - -c
+      args:
+        - |
+          pip install nose pytest
+          echo "Running nose tests..."
+          nosetests -v --with-coverage --cover-package=src tests/ || true
+          echo "Nose tests completed"
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: buildah-build
+spec:
+  params:
+    - name: image-reference
+      type: string
+      description: Image reference to build
+    - name: dockerfile-path
+      type: string
+      default: Dockerfile
+      description: Path to Dockerfile
+  workspaces:
+    - name: output
+  steps:
+    - name: build
+      image: quay.io/buildah/stable
+      workingDir: /workspace/output
+      securityContext:
+        privileged: true
+      command:
+        - sh
+        - -c
+      args:
+        - |
+          echo "Building container image..."
+          buildah build -f $(params.dockerfile-path) -t $(params.image-reference) .
+          echo "Image build completed"

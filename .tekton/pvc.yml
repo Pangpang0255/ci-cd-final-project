@@ -1,0 +1,12 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: PersistentVolumeClaim
+metadata:
+  name: oc-lab-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: skills-network-learner
+  resources:
+    requests:
+      storage: 1Gi

@@ -1,0 +1,88 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: ci-cd-pipeline
+spec:
+  params:
+    - name: repository-url
+      type: string
+      description: Git repository URL
+    - name: app-name
+      type: string
+      description: Application name
+    - name: build-image
+      type: string
+      description: Container image reference for build
+  workspaces:
+    - name: output
+  tasks:
+    # Step 1: Cleanup workspace
+    - name: cleanup
+      taskRef:
+        name: cleanup
+      workspaces:
+        - name: output
+          workspace: output
+
+    # Step 2: Git clone
+    - name: git-clone
+      taskRef:
+        name: git-clone
+      runAfter:
+        - cleanup
+      params:
+        - name: repository-url
+          value: $(params.repository-url)
+        - name: branch
+          value: main
+      workspaces:
+        - name: output
+          workspace: output
+
+    # Step 3: Flake8 linting
+    - name: flake8-linting
+      taskRef:
+        name: flake8-linting
+      runAfter:
+        - git-clone
+      workspaces:
+        - name: output
+          workspace: output
+
+    # Step 4: Nose tests
+    - name: nose-tests
+      taskRef:
+        name: nose-tests
+      runAfter:
+        - flake8-linting
+      workspaces:
+        - name: output
+          workspace: output
+
+    # Step 5: Buildah build
+    - name: buildah-build
+      taskRef:
+        name: buildah-build
+      runAfter:
+        - nose-tests
+      params:
+        - name: image-reference
+          value: $(params.build-image)
+        - name: dockerfile-path
+          value: Dockerfile
+      workspaces:
+        - name: output
+          workspace: output
+
+    # Step 6: OpenShift deployment
+    - name: oc-deploy
+      taskRef:
+        name: openshift-client
+      runAfter:
+        - buildah-build
+      params:
+        - name: SCRIPT
+          value: |
+            oc create deployment $(params.app-name) --image=$(params.build-image) --dry-run=client -o yaml | oc apply -f -
+            echo "Deployment created/updated successfully"
