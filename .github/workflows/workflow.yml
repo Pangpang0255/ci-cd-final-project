@@ -27,4 +27,4 @@ jobs:
           flake8 src --count --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Jalankan pengujian unit dengan nose
-        run: nosetests -v --with-spec --spec-color --with-coverage --cover-package=src
+        run: nosetests -v --with-coverage --cover-package=src tests/
